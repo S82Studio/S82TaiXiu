@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>S82 Tài Xỉu</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Main panel -->
+<div id="panel">
+
+  <!-- Sakura petals: phải nằm BÊN TRONG panel để overflow:hidden clip được -->
+  <div id="petals-container"></div>
+
+  <!-- Header -->
+  <div class="panel-header">
+    <div class="header-brand">
+      <span class="blossom-icon">🌸</span>
+      <div class="header-titles">
+        <span class="brand-name">S82 TÀI XỈU</span>
+        <span class="brand-sub">Hoa Anh Đào</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="round-badge">
+        <span class="round-label">VÒNG</span>
+        <span class="round-num" id="roundNum">1</span>
+      </div>
+      <button class="close-btn" id="closeBtn">✕</button>
+    </div>
+  </div>
+
+  <!-- Timer section -->
+  <div class="timer-section">
+    <div class="status-row">
+      <div class="status-indicator" id="statusIndicator">
+        <div class="status-dot" id="statusDot"></div>
+        <span class="status-text" id="statusText">Đang nhận cược</span>
+      </div>
+      <div class="time-display">
+        <span class="time-value" id="timeValue">10:00</span>
+      </div>
+    </div>
+    <div class="timer-bar-wrap">
+      <div class="timer-bar" id="timerBar"></div>
+    </div>
+  </div>
+
+  <!-- Bet pool -->
+  <div class="pool-section">
+    <div class="pool-side tai-pool">
+      <span class="pool-icon">🔴</span>
+      <span class="pool-label">TÀI</span>
+      <span class="pool-amount" id="taiPool">0</span>
+    </div>
+    <div class="pool-divider">VS</div>
+    <div class="pool-side xiu-pool">
+      <span class="pool-amount" id="xiuPool">0</span>
+      <span class="pool-label">XỈU</span>
+      <span class="pool-icon">🔵</span>
+    </div>
+  </div>
+
+  <!-- Dice display -->
+  <div class="dice-section">
+    <div class="dice-row">
+      <div class="die" id="die1"><div class="die-face"><span id="dv1">?</span></div></div>
+      <div class="die-plus">+</div>
+      <div class="die" id="die2"><div class="die-face"><span id="dv2">?</span></div></div>
+      <div class="die-plus">+</div>
+      <div class="die" id="die3"><div class="die-face"><span id="dv3">?</span></div></div>
+    </div>
+    <div class="result-row" id="resultRow">
+      <div class="result-badge hidden" id="resultBadge">
+        <span class="result-total" id="resultTotal">—</span>
+        <span class="result-label" id="resultLabel">Chờ kết quả</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Divider -->
+  <div class="divider"><span>ĐẶT CƯỢC</span></div>
+
+  <!-- Bet section -->
+  <div class="bet-section">
+    <div class="balance-row">
+      <span class="balance-label">💴 Số Dư:</span>
+      <span class="balance-value" id="balanceDisplay">—</span>
+    </div>
+
+    <div class="amount-input-wrap">
+      <input type="number" id="betAmount" class="amount-input"
+        placeholder="Nhập số tiền..."
+        min="50000" max="5000000" step="50000">
+    </div>
+
+    <div class="quick-bets">
+      <button class="qb-btn" onclick="setAmount(50000)">50K</button>
+      <button class="qb-btn" onclick="setAmount(100000)">100K</button>
+      <button class="qb-btn" onclick="setAmount(500000)">500K</button>
+      <button class="qb-btn" onclick="setAmount(1000000)">1M</button>
+      <button class="qb-btn" onclick="setAmount(2000000)">2M</button>
+      <button class="qb-btn qb-max" onclick="setMaxAmount()">MAX</button>
+    </div>
+
+    <div class="bet-buttons">
+      <button class="bet-btn tai-btn" id="taiBtnMain" onclick="placeBet('tai')">
+        <span class="bet-btn-icon">🔴</span>
+        <div class="bet-btn-info">
+          <span class="bet-btn-label">TÀI</span>
+          <span class="bet-btn-range">11 — 17</span>
+        </div>
+        <span class="bet-btn-odds">x1.9</span>
+      </button>
+      <button class="bet-btn xiu-btn" id="xiuBtnMain" onclick="placeBet('xiu')">
+        <span class="bet-btn-icon">🔵</span>
+        <div class="bet-btn-info">
+          <span class="bet-btn-label">XỈU</span>
+          <span class="bet-btn-range">4 — 10</span>
+        </div>
+        <span class="bet-btn-odds">x1.9</span>
+      </button>
+    </div>
+
+    <!-- Current bet status -->
+    <div class="current-bet" id="currentBet">
+      <span class="cb-label">Cược của bạn:</span>
+      <span class="cb-choice" id="cbChoice"></span>
+      <span class="cb-amount" id="cbAmount"></span>
+    </div>
+  </div>
+
+  <!-- Divider -->
+  <div class="divider"><span>LỊCH SỬ 5 VÒNG GẦN NHẤT</span></div>
+
+  <!-- History -->
+  <div class="history-section">
+    <div class="history-row" id="historyRow">
+      <div class="history-empty">Chưa có dữ liệu</div>
+    </div>
+  </div>
+
+  <!-- Draw notice -->
+  <div class="draw-notice">
+    <span>⚠️ Tổng 3 hoặc 18 = Hòa → Nhà cái thắng</span>
+  </div>
+
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
