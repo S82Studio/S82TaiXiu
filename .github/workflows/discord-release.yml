@@ -1,1 +1,189 @@
+name: Discord Release Notification
+
+'on':
+  release:
+    types:
+      - published
+
+jobs:
+  notify-discord:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Gửi thông báo phát hành lên Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          AUTHOR_NAME: ${{ github.event.release.author.login }}
+          REPOSITORY: ${{ github.repository }}
+
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+          from datetime import datetime, timezone
+
+          # ==============================
+          # THÔNG TIN RELEASE
+          # ==============================
+
+          webhook = os.environ["DISCORD_WEBHOOK"]
+
+          release_tag = os.environ.get("RELEASE_TAG") or "Không xác định"
+          release_url = os.environ.get("RELEASE_URL") or ""
+          release_body = os.environ.get("RELEASE_BODY") or "Không có thông tin cập nhật."
+          author = os.environ.get("AUTHOR_NAME") or "Không xác định"
+          repository = os.environ.get("REPOSITORY") or "S82Studio/TaiXiu"
+
+          github_url = f"https://github.com/{repository}"
+
+          # ==============================
+          # GIỚI HẠN CHANGELOG
+          # ==============================
+
+          if len(release_body) > 3500:
+              release_body = release_body[:3500] + "\n..."
+
+          # ==============================
+          # DISCORD EMBED
+          # ==============================
+
+          payload = {
+
+              # @everyone
+              "content": "@everyone",
+
+              # Cho phép Discord ping @everyone
+              "allowed_mentions": {
+                  "parse": ["everyone"]
+              },
+
+              # Tên webhook
+              "username": "S82Studio • TaiXiu",
+
+              # Avatar của S82Studio trên GitHub
+              "avatar_url": "https://github.com/S82Studio.png?size=128",
+
+              "embeds": [
+                  {
+                      # Tiêu đề
+                      "title": f"🚀 PHIÊN BẢN MỚI — TaiXiu {release_tag}",
+
+                      # Link khi click vào tiêu đề
+                      "url": release_url,
+
+                      # Nội dung giới thiệu
+                      "description": (
+                          "🎉 **Một phiên bản mới của TaiXiu đã được phát hành!**\n\n"
+                          "Hãy cập nhật lên phiên bản mới nhất để nhận "
+                          "những tính năng và sửa lỗi mới."
+                      ),
+
+                      # Màu Embed - Sakura Pink
+                      "color": 15235449,
+
+                      # Các thông tin
+                      "fields": [
+
+                          {
+                              "name": "✨ NỘI DUNG CẬP NHẬT",
+                              "value": release_body,
+                              "inline": False
+                          },
+
+                          {
+                              "name": "📦 Phiên bản",
+                              "value": f"`{release_tag}`",
+                              "inline": True
+                          },
+
+                          {
+                              "name": "👤 Phát hành bởi",
+                              "value": f"`{author}`",
+                              "inline": True
+                          },
+
+                          {
+                              "name": "📁 Repository",
+                              "value": f"`{repository}`",
+                              "inline": False
+                          }
+                      ],
+
+                      # Thumbnail
+                      "thumbnail": {
+                          "url": "https://github.com/S82Studio.png?size=256"
+                      },
+
+                      # Footer
+                      "footer": {
+                          "text": "🐉 S82Studio • TaiXiu",
+                          "icon_url": "https://github.com/S82Studio.png?size=64"
+                      },
+
+                      # Thời gian
+                      "timestamp": datetime.now(
+                          timezone.utc
+                      ).isoformat()
+                  }
+              ],
+
+              # ==============================
+              # NÚT BẤM
+              # ==============================
+
+              "components": [
+                  {
+                      "type": 1,
+
+                      "components": [
+
+                          {
+                              "type": 2,
+                              "style": 5,
+                              "label": "📥 TẢI BẢN MỚI",
+                              "url": release_url
+                          },
+
+                          {
+                              "type": 2,
+                              "style": 5,
+                              "label": "🔗 GITHUB",
+                              "url": github_url
+                          }
+
+                      ]
+                  }
+              ]
+          }
+
+          # ==============================
+          # GỬI SANG DISCORD
+          # ==============================
+
+          data = json.dumps(
+              payload,
+              ensure_ascii=False
+          ).encode("utf-8")
+
+          request = urllib.request.Request(
+              webhook,
+              data=data,
+              headers={
+                  "Content-Type": "application/json",
+                  "User-Agent": "GitHub-Actions-RedeemCode"
+              },
+              method="POST"
+          )
+
+          with urllib.request.urlopen(request) as response:
+              print(
+                  "Discord phản hồi:",
+                  response.status
+              )
+
+          PY
 
