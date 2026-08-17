@@ -121,4 +121,4 @@ s82taixiu/
 
 ---
 
-**S82 Studio · Peach Blossom City**
+**S82 Studio**
