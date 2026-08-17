@@ -1,7 +1,7 @@
 fx_version 'cerulean'
 game 'gta5'
 
-author 'S82 Development'
+author 'S82 Studio'
 description 'S82 Tài Xỉu - Premium Edition (Đa Core: ESX / QBCore / QBX)'
 version '2.0.0'
 
