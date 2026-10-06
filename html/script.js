@@ -20,23 +20,6 @@ let config = {
     payoutRate: 1.9,
 };
 
-// ── Petal generator ───────────────────────────────────
-(function spawnPetals() {
-    const container = document.getElementById('petals-container');
-    const PETAL_COUNT = 20;
-    for (let i = 0; i < PETAL_COUNT; i++) {
-        const p = document.createElement('div');
-        p.className = 'petal';
-        const size = (Math.random() * 10 + 8) + 'px';
-        p.style.left = (Math.random() * 100) + '%';
-        p.style.width = size;
-        p.style.height = size;
-        p.style.animationDuration = (Math.random() * 12 + 8) + 's';
-        p.style.animationDelay    = (Math.random() * 12) + 's';
-        container.appendChild(p);
-    }
-})();
-
 // ── Helpers ────────────────────────────────────────────
 function formatMoney(n) {
     n = parseInt(n) || 0;

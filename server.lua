@@ -303,6 +303,101 @@ local function IsAdmin(src)
     return src == 0
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- WEBHOOK ADMIN (Discord) — cấu hình tại server_config.lua
+-- Có hàng đợi để tránh bị Discord rate-limit khi nhiều người cược cùng lúc
+-- ═══════════════════════════════════════════════════════════════
+
+local WH = (ServerConfig and ServerConfig.Webhook) or { enabled = false, urls = {} }
+local WebhookQueue = {}
+
+local function FullMoney(n)
+    local s = tostring(math.floor(tonumber(n) or 0))
+    local neg = s:sub(1, 1) == '-'
+    if neg then s = s:sub(2) end
+    s = s:reverse():gsub('(%d%d%d)', '%1.'):reverse():gsub('^%.', '')
+    return (neg and '-' or '') .. s .. '$'
+end
+
+local function GetIdentifiersText(src)
+    if not src or src == 0 then return 'Console' end
+    local show = WH.ShowIdentifiers or {}
+    local lines = {}
+    for _, id in ipairs(GetPlayerIdentifiers(src)) do
+        local kind, value = id:match('^(%w+):(.+)$')
+        if kind and show[kind] then
+            if kind == 'discord' then
+                lines[#lines + 1] = 'Discord: <@' .. value .. '>'
+            else
+                lines[#lines + 1] = kind .. ': `' .. value .. '`'
+            end
+        end
+    end
+    return #lines > 0 and table.concat(lines, '\n') or '—'
+end
+
+local function PlayerLabel(src, Player)
+    local name = Player and Bridge.GetName(Player) or 'Không rõ'
+    local cid  = Player and Bridge.GetIdentifier(Player) or '—'
+    return string.format('**%s** (ID %s)\nCID: `%s`\nTên FiveM: %s', name, tostring(src), cid, GetPlayerName(src) or '—')
+end
+
+local function SendWebhook(channel, title, description, color, fields)
+    if not WH.enabled then return end
+    local url = WH.urls and WH.urls[channel]
+    if not url or url == '' then return end
+
+    WebhookQueue[#WebhookQueue + 1] = {
+        url = url,
+        body = json.encode({
+            username   = WH.username,
+            avatar_url = (WH.avatar ~= '' and WH.avatar) or nil,
+            embeds = {{
+                title       = title,
+                description = description,
+                color       = color,
+                fields      = fields,
+                footer      = { text = WH.footer },
+                timestamp   = os.date('!%Y-%m-%dT%H:%M:%SZ'),
+            }},
+        }),
+    }
+end
+
+CreateThread(function()
+    while true do
+        if #WebhookQueue > 0 then
+            local item = table.remove(WebhookQueue, 1)
+            PerformHttpRequest(item.url, function(code)
+                if code ~= 200 and code ~= 204 then
+                    print(('^1[S82-TAIXIU] Webhook lỗi (HTTP %s)^7'):format(tostring(code)))
+                end
+            end, 'POST', item.body, { ['Content-Type'] = 'application/json' })
+            Wait(1200)
+        else
+            Wait(500)
+        end
+    end
+end)
+
+local function LogAdminCommand(src, command, detail)
+    SendWebhook('admin', '🛠️ Lệnh Admin: /' .. command,
+        detail or '', WH.colors and WH.colors.admin,
+        {
+            { name = 'Người dùng', value = src == 0 and 'Console' or ('**' .. (GetPlayerName(src) or '?') .. '** (ID ' .. src .. ')'), inline = true },
+            { name = 'Vòng hiện tại', value = '#' .. GameState.Round, inline = true },
+            { name = 'Identifiers', value = GetIdentifiersText(src), inline = false },
+        })
+end
+
+local function LogAlert(src, Player, reason)
+    SendWebhook('alert', '🚨 Cảnh Báo Tài Xỉu', reason, WH.colors and WH.colors.alert,
+        {
+            { name = 'Người chơi', value = PlayerLabel(src, Player), inline = true },
+            { name = 'Identifiers', value = GetIdentifiersText(src), inline = true },
+        })
+end
+
 local function GetBetPool()
     local taiTotal, xiuTotal, taiCount, xiuCount = 0, 0, 0, 0
     for _, bet in pairs(GameState.Bets) do
@@ -385,6 +480,7 @@ local function RollDice()
     -- Xử lý tiền cược
     local totBetAmt, totPayout, totRevenue = 0, 0, 0
     local winners, losers, draws = 0, 0, 0
+    local logLines = {}   -- webhook: danh sách kết quả từng người
 
     for src, bet in pairs(GameState.Bets) do
         local Player = GetPlayer(src)
@@ -403,9 +499,11 @@ local function RollDice()
                     DB_UpsertPlayer(citizenid, name, 'draw', bet.amount, 0)
                 end
 
+                logLines[#logLines + 1] = string.format('🟡 %s — %s %s → mất %s', name, string.upper(bet.choice), FullMoney(bet.amount), FullMoney(bet.amount))
+
                 TriggerClientEvent('s82taixiu:client:updateBalance', src, Bridge.GetMoney(Player, Config.Currency))
                 Notify(src,
-                    '🌸 Hòa Bài! (Tổng: ' .. total .. ')',
+                    '🎲 Hòa Bài! (Tổng: ' .. total .. ')',
                     'Ván hòa — nhà cái thắng tất cả. Mất ' .. FormatMoney(bet.amount),
                     'warning'
                 )
@@ -424,7 +522,19 @@ local function RollDice()
                     DB_UpsertPlayer(citizenid, name, 'win', bet.amount, winAmount)
                 end
 
-                TriggerClientEvent('s82taixiu:client:updateBalance', src, Bridge.GetMoney(Player, Config.Currency))
+                logLines[#logLines + 1] = string.format('🟢 %s — %s %s → lời %s', name, string.upper(bet.choice), FullMoney(bet.amount), FullMoney(winAmount))
+
+                if WH.BigWinAmount and winAmount >= WH.BigWinAmount then
+                    SendWebhook('bigwin', '💰 THẮNG LỚN — Vòng #' .. GameState.Round,
+                        string.format('Kết quả: **%s** (%d-%d-%d = %d)', string.upper(result), d1, d2, d3, total),
+                        WH.colors and WH.colors.bigwin,
+                        {
+                            { name = 'Người chơi', value = PlayerLabel(src, Player), inline = true },
+                            { name = 'Cược', value = string.upper(bet.choice) .. ' • ' .. FullMoney(bet.amount), inline = true },
+                            { name = 'Tiền lời', value = FullMoney(winAmount) .. '\nNhận về: ' .. FullMoney(totalReceive), inline = true },
+                            { name = 'Identifiers', value = GetIdentifiersText(src), inline = false },
+                        })
+                end
 
                 local rewardMsg = ''
                 -- Phần thưởng vật phẩm tuỳ chọn (Config.ItemReward)
@@ -451,6 +561,8 @@ local function RollDice()
                     DB_UpsertPlayer(citizenid, name, 'lose', bet.amount, 0)
                 end
 
+                logLines[#logLines + 1] = string.format('🔴 %s — %s %s → mất %s', name, string.upper(bet.choice), FullMoney(bet.amount), FullMoney(bet.amount))
+
                 TriggerClientEvent('s82taixiu:client:updateBalance', src, Bridge.GetMoney(Player, Config.Currency))
                 Notify(src,
                     '💔 Thua — ' .. string.upper(result) .. ' (' .. total .. ')',
@@ -465,6 +577,32 @@ local function RollDice()
     if Config.EnableDatabase and roundId then
         local houseProfit = totRevenue - math.max(0, totPayout - totBetAmt)
         DB_UpdateRound(roundId, winners + losers + draws, totBetAmt, totPayout, houseProfit, winners, losers, draws)
+    end
+
+    -- Webhook: tổng kết vòng
+    if #logLines > 0 or WH.LogEmptyRounds then
+        local maxShow = WH.MaxPlayersInResult or 25
+        local shown = {}
+        for i = 1, math.min(#logLines, maxShow) do shown[i] = logLines[i] end
+        if #logLines > maxShow then
+            shown[#shown + 1] = string.format('... và %d người khác', #logLines - maxShow)
+        end
+        local listText = #shown > 0 and table.concat(shown, '\n') or 'Không có ai cược'
+        if #listText > 1000 then listText = listText:sub(1, 1000) .. '\n...' end
+
+        local icon = result == 'tai' and '🔴' or result == 'xiu' and '🔵' or '🟡'
+        SendWebhook('results',
+            string.format('%s Vòng #%d — %s (%d)', icon, GameState.Round, ({ tai = 'TÀI', xiu = 'XỈU', hoa = 'HÒA' })[result], total),
+            string.format('🎲 Xúc xắc: **%d - %d - %d**', d1, d2, d3),
+            WH.colors and WH.colors[result],
+            {
+                { name = 'Số người cược', value = tostring(winners + losers + draws), inline = true },
+                { name = 'Thắng / Thua / Hòa', value = string.format('%d / %d / %d', winners, losers, draws), inline = true },
+                { name = 'Tổng tiền cược', value = FullMoney(totBetAmt), inline = true },
+                { name = 'Tổng trả thưởng', value = FullMoney(totPayout), inline = true },
+                { name = 'Lãi/Lỗ nhà cái', value = FullMoney(totBetAmt - totPayout), inline = true },
+                { name = 'Chi tiết', value = listText, inline = false },
+            })
     end
 
     GameState.Stats.totalBets     = GameState.Stats.totalBets + winners + losers + draws
@@ -545,10 +683,16 @@ RegisterNetEvent('s82taixiu:server:bet', function(choice, amount)
     end
 
     -- Validate lựa chọn
-    if choice ~= 'tai' and choice ~= 'xiu' then return end
+    if choice ~= 'tai' and choice ~= 'xiu' then
+        LogAlert(src, Player, 'Gửi lựa chọn cược không hợp lệ: `' .. tostring(choice) .. '`')
+        return
+    end
 
     -- Validate số tiền
-    if type(amount) ~= 'number' then return end
+    if type(amount) ~= 'number' or amount ~= amount then
+        LogAlert(src, Player, 'Gửi số tiền cược không hợp lệ: `' .. tostring(amount) .. '`')
+        return
+    end
     amount = math.floor(amount)
 
     if amount < Config.MinBet then
@@ -571,6 +715,7 @@ RegisterNetEvent('s82taixiu:server:bet', function(choice, amount)
     if Config.EnableAnticheat then
         local cash = Bridge.GetMoney(Player, Config.Currency)
         if cash < amount then
+            LogAlert(src, Player, string.format('Cố cược %s nhưng chỉ có %s (UI đã chặn — có thể gửi event trực tiếp)', FullMoney(amount), FullMoney(cash)))
             Notify(src, '💸 Không Đủ Tiền', 'Bạn không có đủ tiền mặt!', 'error')
             return
         end
@@ -599,6 +744,18 @@ RegisterNetEvent('s82taixiu:server:bet', function(choice, amount)
     TriggerClientEvent('s82taixiu:client:betPlaced', src, { choice = choice, amount = amount, newBalance = newBalance })
     -- Broadcast pool mới cho tất cả người chơi đang mở UI
     TriggerClientEvent('s82taixiu:client:poolUpdate', -1, GetBetPool())
+
+    local pool = GetBetPool()
+    SendWebhook('bets', '🎲 Đặt Cược — Vòng #' .. GameState.Round,
+        string.format('**%s** • %s', choice == 'tai' and 'TÀI' or 'XỈU', FullMoney(amount)),
+        WH.colors and WH.colors[choice],
+        {
+            { name = 'Người chơi', value = PlayerLabel(src, Player), inline = true },
+            { name = 'Số dư còn lại', value = FullMoney(newBalance), inline = true },
+            { name = 'Pool hiện tại', value = string.format('TÀI: %s (%d)\nXỈU: %s (%d)', FullMoney(pool.taiTotal), pool.taiCount, FullMoney(pool.xiuTotal), pool.xiuCount), inline = true },
+            { name = 'Identifiers', value = GetIdentifiersText(src), inline = false },
+        })
+
     Notify(src,
         '✅ Đặt Cược Thành Công',
         string.upper(choice) .. ' — ' .. FormatMoney(amount),
@@ -696,6 +853,8 @@ RegisterCommand('taixiustats', function(src, args)
     print(string.format('House Edge     : ^2%s^7', Config.HouseEdge.enabled and 'BẬT' or 'TẮT'))
     print(string.format('Dynamic Edge   : ^2%s^7', dynamicActive and 'ĐANG KÍCH HOẠT' or 'Chờ'))
     print('^3════════════════════════════^7')
+    LogAdminCommand(src, 'taixiustats', string.format('Tài/Xỉu/Hòa: %d / %d / %d\nProfit session: %s\nDynamic Edge: %s',
+        GameState.Stats.taiCount, GameState.Stats.xiuCount, GameState.Stats.hoaCount, FullMoney(sessionProfit), dynamicActive and 'ĐANG KÍCH HOẠT' or 'Chờ'))
 end, false)
 
 RegisterCommand('taixiureset', function(src, args)
@@ -703,6 +862,10 @@ RegisterCommand('taixiureset', function(src, args)
         if src ~= 0 then Notify(src, 'Lỗi', 'Không có quyền!', 'error') end
         return
     end
+    local pendingBets, pendingAmount = 0, 0
+    for _, b in pairs(GameState.Bets) do pendingBets = pendingBets + 1; pendingAmount = pendingAmount + b.amount end
+    LogAdminCommand(src, 'taixiureset', string.format('Reset game từ vòng #%d.\n⚠️ Huỷ %d lượt cược đang chờ (tổng %s) — tiền KHÔNG được hoàn.', GameState.Round, pendingBets, FullMoney(pendingAmount)))
+
     GameState.Bets    = {}
     GameState.Round   = 1
     GameState.Time    = Config.RoundTime
@@ -718,5 +881,6 @@ RegisterCommand('taixiuclean', function(src, args)
     if not IsAdmin(src) or not Config.EnableDatabase then return end
     local days = tonumber(args[1]) or Config.CleanupDays
     DB_Cleanup(days)
+    LogAdminCommand(src, 'taixiuclean', 'Xoá dữ liệu cũ hơn ' .. days .. ' ngày')
     if src ~= 0 then Notify(src, '🧹 Đã Dọn Dẹp', 'Xóa data cũ hơn ' .. days .. ' ngày', 'success') end
 end, false)

@@ -3,7 +3,7 @@ game 'gta5'
 
 author 'S82 Studio'
 description 'S82 Tài Xỉu - Premium Edition (Đa Core: ESX / QBCore / QBX)'
-version '2.0.0'
+version '2.0.1'
 
 shared_scripts {
     '@ox_lib/init.lua',
@@ -12,6 +12,7 @@ shared_scripts {
 
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
+    'server_config.lua',
     'bridge/framework.lua',
     'server.lua'
 }
